@@ -34,25 +34,16 @@ class TimelineMapApp {
         L.control.scale().addTo(this.map);
     }
 
-    // Load timeline data from JSON
-    loadTimeline() {
-        // Sample data - replace with fetch when you add your timeline.json
-        this.timeline = [
-            {
-                "startTime": "2023-08-12T15:00:00.000-05:00",
-                "endTime": "2023-08-12T17:00:00.000-05:00",
-                "timelinePath": [
-                    {"point": "36.2222287, -86.3007755", "time": "2023-08-12T15:25:00.000-05:00"},
-                    {"point": "36.2194683, -86.3001124", "time": "2023-08-12T15:47:00.000-05:00"},
-                    {"point": "36.2222557, -86.3008035", "time": "2023-08-12T15:50:00.000-05:00"},
-                    {"point": "36.2194683, -86.3001124", "time": "2023-08-12T16:03:00.000-05:00"}
-                ]
-            }
-        ];
-        this.populateFilters();
-        this.displayAllData();
-    }
-
+loadTimeline() {
+    fetch('timeline.json')
+        .then(response => response.json())
+        .then(data => {
+            this.timeline = data.semanticSegments;
+            this.populateFilters();
+            this.displayAllData();
+        })
+        .catch(err => console.log('Error loading timeline:', err));
+}
     // Parse coordinates from various formats
     parseCoordinates(coordString) {
         const cleaned = coordString.replace(/°/g, '').trim();
