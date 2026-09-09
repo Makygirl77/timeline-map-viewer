@@ -13,7 +13,8 @@ class TimelineMapApp {
         this.markerColors = ['#FF6B6B', '#4ECDC4', '#45B7D1', '#FFA07A', '#98D8C8', '#F7DC6F', '#BB8FCE'];
         this.colorIndex = 0;
         
-        this.initMap();\n        this.loadTimeline();
+        this.initMap();
+        this.loadTimeline();
         this.setupEventListeners();
     }
 
@@ -34,16 +35,17 @@ class TimelineMapApp {
         L.control.scale().addTo(this.map);
     }
 
-loadTimeline() {
-    fetch('timeline.json')
-        .then(response => response.json())
-        .then(data => {
-            this.timeline = data.semanticSegments;
-            this.populateFilters();
-            this.displayAllData();
-        })
-        .catch(err => console.log('Error loading timeline:', err));
-}
+    loadTimeline() {
+        fetch('timeline.json')
+            .then(response => response.json())
+            .then(data => {
+                this.timeline = data.semanticSegments;
+                this.populateFilters();
+                this.displayAllData();
+            })
+            .catch(err => console.error('Error loading timeline:', err));
+    }
+
     // Parse coordinates from various formats
     parseCoordinates(coordString) {
         const cleaned = coordString.replace(/°/g, '').trim();
@@ -245,50 +247,181 @@ loadTimeline() {
             if (!minTime) minTime = startDate.fullDateTime;
             maxTime = endDate.fullDateTime;
 
-            segment.timelinePath.forEach((pathPoint, index) => {
-                const coords = this.parseCoordinates(pathPoint.point);
-                const time = this.getDateComponents(pathPoint.time);
+            // FIXED: Only process segments that have timelinePath
+            if (segment.timelinePath && Array.isArray(segment.timelinePath)) {
+                segment.timelinePath.forEach((pathPoint, index) => {
+                    const coords = this.parseCoordinates(pathPoint.point);
+                    const time = this.getDateComponents(pathPoint.time);
 
-                allCoords.push({coords: coords, time: time, segmentIndex: segmentIndex, pathIndex: index});
+                    allCoords.push({coords: coords, time: time, segmentIndex: segmentIndex, pathIndex: index});
 
-                // Calculate distance from previous point
-                let distanceFromPrev = 0;
-                if (allCoords.length > 1) {
-                    const prevCoords = allCoords[allCoords.length - 2].coords;
-                    distanceFromPrev = this.calculateDistance(prevCoords, coords);
-                    totalDistance += distanceFromPrev;
-                }
+                    // Calculate distance from previous point
+                    let distanceFromPrev = 0;
+                    if (allCoords.length > 1) {
+                        const prevCoords = allCoords[allCoords.length - 2].coords;
+                        distanceFromPrev = this.calculateDistance(prevCoords, coords);
+                        totalDistance += distanceFromPrev;
+                    }
 
-                // ENHANCED MARKER - Larger and more visible
-                const marker = L.circleMarker(coords, {
-                    radius: 12,  // Much larger
-                    fillColor: segmentColor,
-                    color: '#000000',  // Black border for contrast
-                    weight: 3,
+                    // ENHANCED MARKER - Larger and more visible
+                    const marker = L.circleMarker(coords, {
+                        radius: 12,  // Much larger
+                        fillColor: segmentColor,
+                        color: '#000000',  // Black border for contrast
+                        weight: 3,
+                        opacity: 1,
+                        fillOpacity: 0.9,
+                        className: 'travel-marker'
+                    }).addTo(this.map);
+
+                    // Enhanced popup with more info
+                    marker.bindPopup(`
+                        <div style="font-weight: bold; color: ${segmentColor}; font-size: 13px;">
+                            📍 Location ${index + 1}
+                        </div>
+                        <hr style="margin: 5px 0;">
+                        <div style="font-size: 12px;">
+                            <strong>Coordinates:</strong><br>
+                            Latitude: ${coords[0].toFixed(6)}°<br>
+                            Longitude: ${coords[1].toFixed(6)}°<br>
+                            <strong>Time:</strong><br>
+                            ${time.fullDateTime}<br>
+                            <strong>Distance from previous:</strong><br>
+                            ${distanceFromPrev.toFixed(0)} meters
+                        </div>
+                    `, {
+                        maxWidth: 250,
+                        className: 'travel-popup'
+                    });
+
+                    // Add click event to highlight path
+                    marker.on('click', () => {
+                        this.highlightPathSegment(segment.timelinePath, segmentIndex);
+                    });
+
+                    this.markers.push({marker, coords, time: time.fullDateTime});
+                });
+            }
+            
+            // FIXED: Also handle visit and activity locations
+            if (segment.visit && segment.visit.topCandidate && segment.visit.topCandidate.placeLocation) {
+                const placeCoords = this.parseCoordinates(segment.visit.topCandidate.placeLocation.latLng);
+                const time = this.getDateComponents(segment.startTime);
+                
+                allCoords.push({coords: placeCoords, time: time, segmentIndex: segmentIndex, pathIndex: 0});
+
+                const marker = L.circleMarker(placeCoords, {
+                    radius: 10,
+                    fillColor: '#FFC300',
+                    color: '#000000',
+                    weight: 2,
                     opacity: 1,
-                    fillOpacity: 0.9,
-                    className: 'travel-marker'
+                    fillOpacity: 0.8,
+                    className: 'visit-marker'
                 }).addTo(this.map);
 
-                // Enhanced popup with more info
                 marker.bindPopup(`
-                    <div style="font-weight: bold; color: ${segmentColor}; font-size: 13px;">
-                        📍 Location ${index + 1}
+                    <div style="font-weight: bold; color: #FFC300; font-size: 13px;">
+                        🏠 Visit Location
                     </div>
                     <hr style="margin: 5px 0;">
                     <div style="font-size: 12px;">
                         <strong>Coordinates:</strong><br>
-                        Latitude: ${coords[0].toFixed(6)}°<br>
-                        Longitude: ${coords[1].toFixed(6)}°<br>
+                        Latitude: ${placeCoords[0].toFixed(6)}°<br>
+                        Longitude: ${placeCoords[1].toFixed(6)}°<br>
                         <strong>Time:</strong><br>
-                        ${time.fullDateTime}<br>
-                        <strong>Distance from previous:</strong><br>
-                        ${distanceFromPrev.toFixed(0)} meters
+                        ${time.fullDateTime}
                     </div>
                 `, {
                     maxWidth: 250,
                     className: 'travel-popup'
                 });
 
-                // Add click event to highlight path
-                marker.on('click', () => {\n                    this.highlightPathSegment(segment.timelinePath, segmentIndex);\n                });\n\n                this.markers.push({marker, coords, index});\n            });\n        });\n\n        // ENHANCED POLYLINE - Thicker and more visible\n        if (allCoords.length > 0) {\n            const polylineCoords = allCoords.map(item => item.coords);\n            this.polyline = L.polyline(polylineCoords, {\n                color: '#FF0000',  // Red for maximum visibility\n                weight: 4,         // Thicker line\n                opacity: 0.8,\n                smoothFactor: 1.0,\n                dashArray: '5, 5'  // Dashed pattern for clarity\n            }).addTo(this.map);\n\n            // Add arrows to show direction\n            this.addDirectionArrows(polylineCoords);\n\n            // Fit map to bounds with padding\n            this.map.fitBounds(this.polyline.getBounds(), { padding: [100, 100] });\n        }\n\n        // Update stats with enhanced info\n        document.getElementById('location-count').textContent = allCoords.length;\n        document.getElementById('time-range').textContent = `${minTime} → ${maxTime}`;\n        document.getElementById('distance-traveled').textContent = this.formatDistance(totalDistance);\n\n        // Log to console for debugging\n        console.log(`Displayed ${allCoords.length} locations, Total distance: ${totalDistance.toFixed(0)}m`);\n    }\n\n    // Add direction arrows to polyline\n    addDirectionArrows(coords) {\n        if (coords.length < 2) return;\n\n        // Add arrow every few points\n        const step = Math.max(1, Math.floor(coords.length / 5));\n        \n        for (let i = 0; i < coords.length - 1; i += step) {\n            const from = coords[i];\n            const to = coords[i + 1];\n            \n            const angle = Math.atan2(\n                to[0] - from[0],\n                to[1] - from[1]\n            ) * 180 / Math.PI;\n\n            L.marker(\n                [(from[0] + to[0]) / 2, (from[1] + to[1]) / 2],\n                {\n                    icon: L.divIcon({\n                        html: `<div style=\"transform: rotate(${angle}deg); font-size: 20px;\">→</div>`,\n                        iconSize: [30, 30],\n                        className: 'arrow-marker'\n                    })\n                }\n            ).addTo(this.map);\n        }\n    }\n\n    // Highlight a specific path segment\n    highlightPathSegment(timelinePath, segmentIndex) {\n        if (this.highlightedPolyline) {\n            this.map.removeLayer(this.highlightedPolyline);\n        }\n\n        const coords = timelinePath.map(point => this.parseCoordinates(point.point));\n        const color = this.markerColors[segmentIndex % this.markerColors.length];\n\n        this.highlightedPolyline = L.polyline(coords, {\n            color: color,\n            weight: 6,\n            opacity: 1,\n            smoothFactor: 1.0\n        }).addTo(this.map);\n    }\n\n    // Format distance for display\n    formatDistance(meters) {\n        if (meters < 1000) {\n            return `${meters.toFixed(0)} meters`;\n        } else {\n            return `${(meters / 1000).toFixed(2)} km`;\n        }\n    }\n\n    // Clear map\n    clearMap() {\n        this.markers.forEach(item => this.map.removeLayer(item.marker));\n        this.markers = [];\n        \n        if (this.polyline) {\n            this.map.removeLayer(this.polyline);\n            this.polyline = null;\n        }\n\n        if (this.highlightedPolyline) {\n            this.map.removeLayer(this.highlightedPolyline);\n            this.highlightedPolyline = null;\n        }\n    }\n\n    // Play animation - ENHANCED with visual effects\n    playAnimation() {\n        if (this.markers.length === 0) return;\n\n        this.isPlaying = true;\n        this.currentMarkerIndex = 0;\n        document.getElementById('play-btn').disabled = true;\n        document.getElementById('stop-btn').disabled = false;\n\n        this.animationInterval = setInterval(() => {\n            if (this.currentMarkerIndex < this.markers.length) {\n                const currentMarker = this.markers[this.currentMarkerIndex];\n                \n                // Zoom to current marker\n                this.map.setView(currentMarker.coords, 15, { animate: true });\n                \n                // Open popup\n                currentMarker.marker.openPopup();\n                \n                // Highlight marker\n                currentMarker.marker.setStyle({\n                    radius: 16,\n                    fillOpacity: 1\n                });\n                \n                this.currentMarkerIndex++;\n            } else {\n                this.stopAnimation();\n            }\n        }, 800);\n    }\n\n    // Stop animation\n    stopAnimation() {\n        this.isPlaying = false;\n        clearInterval(this.animationInterval);\n        document.getElementById('play-btn').disabled = false;\n        document.getElementById('stop-btn').disabled = true;\n        this.currentMarkerIndex = 0;\n    }\n}\n\n// Initialize app when page loads\ndocument.addEventListener('DOMContentLoaded', () => {\n    new TimelineMapApp();\n});\n
+                this.markers.push({marker, coords: placeCoords, time: time.fullDateTime});
+            }
+        });
+
+        // Update stats
+        document.getElementById('location-count').textContent = allCoords.length;
+        document.getElementById('time-range').textContent = minTime && maxTime ? `${minTime} to ${maxTime}` : '-';
+        document.getElementById('distance-traveled').textContent = totalDistance > 0 ? 
+            `${(totalDistance / 1000).toFixed(2)} km (${(totalDistance / 1609).toFixed(2)} mi)` : '-';
+
+        // Fit map to bounds if we have coordinates
+        if (allCoords.length > 0) {
+            const bounds = L.latLngBounds(allCoords.map(c => c.coords));
+            this.map.fitBounds(bounds, { padding: [50, 50] });
+        }
+    }
+
+    // Highlight path segment when marker is clicked
+    highlightPathSegment(path, segmentIndex) {
+        if (this.highlightedPolyline) {
+            this.map.removeLayer(this.highlightedPolyline);
+        }
+
+        const coords = path.map(point => {
+            const parsed = this.parseCoordinates(point.point);
+            return L.latLng(parsed[0], parsed[1]);
+        });
+
+        this.highlightedPolyline = L.polyline(coords, {
+            color: this.markerColors[segmentIndex % this.markerColors.length],
+            weight: 4,
+            opacity: 0.8,
+            dashArray: '5, 5'
+        }).addTo(this.map);
+    }
+
+    // Clear all markers and paths from map
+    clearMap() {
+        this.markers.forEach(m => this.map.removeLayer(m.marker));
+        this.markers = [];
+        
+        if (this.polyline) {
+            this.map.removeLayer(this.polyline);
+            this.polyline = null;
+        }
+        
+        if (this.highlightedPolyline) {
+            this.map.removeLayer(this.highlightedPolyline);
+            this.highlightedPolyline = null;
+        }
+    }
+
+    // Play animation through markers
+    playAnimation() {
+        if (this.markers.length === 0) return;
+        
+        this.isPlaying = true;
+        document.getElementById('play-btn').disabled = true;
+        document.getElementById('stop-btn').disabled = false;
+        
+        this.currentMarkerIndex = 0;
+        this.animationInterval = setInterval(() => {
+            if (this.currentMarkerIndex < this.markers.length) {
+                this.markers[this.currentMarkerIndex].marker.openPopup();
+                this.map.panTo(this.markers[this.currentMarkerIndex].coords);
+                this.currentMarkerIndex++;
+            } else {
+                this.stopAnimation();
+            }
+        }, 500);
+    }
+
+    // Stop animation
+    stopAnimation() {
+        this.isPlaying = false;
+        if (this.animationInterval) {
+            clearInterval(this.animationInterval);
+            this.animationInterval = null;
+        }
+        document.getElementById('play-btn').disabled = false;
+        document.getElementById('stop-btn').disabled = true;
+    }
+}
+
+// Initialize app when page loads
+document.addEventListener('DOMContentLoaded', () => {
+    new TimelineMapApp();
+});
